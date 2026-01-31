@@ -1,0 +1,328 @@
+
+GPS TESTING CODE
+
+#include <TinyGPS++.h>
+
+/*
+  Raspberry Pi Pico + NEO-6M GPS
+  NEW UART CONFIGURATION
+
+  UART USED  : UART1 (Serial2)
+
+  Pico GP8 (TX)  -> GPS RX
+  Pico GP9 (RX)  -> GPS TX
+  Pico 3V3       -> GPS VCC
+  Pico GND       -> GPS GND
+*/
+
+// Create GPS object
+TinyGPSPlus gps;
+
+void setup() {
+  Serial.begin(115200);     // USB Serial Monitor
+
+  // GPS now on Serial2 (UART1)
+  Serial2.begin(115200);    // GPS baud (same as before)
+
+  Serial.println("NEO-6M GPS test on Serial2");
+  Serial.println("Waiting for GPS fix...");
+}
+
+void loop() {
+  while (Serial2.available() > 0) {
+    gps.encode(Serial2.read());
+  }
+
+  if (gps.location.isUpdated()) {
+    Serial.println("------ GPS DATA ------");
+
+    Serial.print("Latitude  : ");
+    Serial.println(gps.location.lat(), 6);
+
+    Serial.print("Longitude : ");
+    Serial.println(gps.location.lng(), 6);
+
+    Serial.print("Satellites: ");
+    Serial.println(gps.satellites.value());
+
+    Serial.print("HDOP      : ");
+    Serial.println(gps.hdop.value());
+
+    Serial.print("Altitude  : ");
+    Serial.print(gps.altitude.meters());
+    Serial.println(" m");
+
+    Serial.println("----------------------");
+    delay(1000);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+SIM900 TESTING CODE
+
+
+
+
+#include <Arduino.h>
+#define TINY_GSM_MODEM_SIM900
+#include <TinyGsmClient.h>
+
+#define SIM900_UART Serial1  // Hardware UART1 on Pico
+#define SIM900_PWR_PIN 3     // Connect to SIM900 "PWR" or "KEY" pin
+//RX1 TX0
+bool networkoutage = false;
+TinyGsm modem(SIM900_UART);
+
+// Configuration
+String phoneNumber = "+919786019360";
+
+
+// Function declarations
+void initializeGSM();
+bool sendSMS(const String number, const String text, const String text1);
+void powerOnSIM900();
+bool testATCommands();
+bool checkNetwork();
+void clearbuffer();
+void systemstart();
+void clearSerialBuffer();
+
+void setup() {
+  // Initialize serial communication for debugging (USB)
+  Serial.begin(9600);
+  delay(2000);
+  
+  // Initialize hardware UART for SIM900
+  SIM900_UART.begin(9600);
+  
+  Serial.println("$$$$$$$$$$$$$$$$$$$$Start of Initialization");
+  delay(6000);
+
+  Serial.println("SIM900 TinyGSM Communication Test with Power-On Reset");
+  powerOnSIM900();
+
+  Serial.println("Starting SIM900 SMS System...");
+  delay(12000);
+
+  Serial.print("Modem Info: ");
+  Serial.println(modem.getModemInfo());
+  
+  // Wait for network registration
+  Serial.println("Waiting for network...");
+  if (!modem.waitForNetwork()) {
+    Serial.println("Failed to connect to network");
+    return;
+  }
+  
+  if (modem.isNetworkConnected()) {
+    Serial.println("Network connected");
+  }
+  
+  // Check signal quality
+  int signalQuality = modem.getSignalQuality();
+  Serial.print("Signal quality: ");
+  Serial.println(signalQuality);
+
+  systemstart();
+
+  clearbuffer();
+
+  signalQuality = modem.getSignalQuality();
+  Serial.print("Signal quality second check: ");
+  Serial.println(signalQuality);
+  delay(5000);
+  
+  // Test SMS
+  modem.sendSMS(phoneNumber, "OPEnTEst");
+
+  Serial.println("$$$$$$$$$$$$$$$$$$$$End of Initialization");
+}
+
+void loop() {
+  delay(6000);  // Wait 6 sec
+
+  int signalQuality;
+  Serial.println("+++++++++++++++++++Start of main loop");
+  
+  clearbuffer();
+  signalQuality = modem.getSignalQuality();
+  Serial.print("Signal quality main loop first check: ");
+  Serial.println(signalQuality);
+  
+  delay(5000);
+  // Send continuous test SMS
+  modem.sendSMS(phoneNumber, "ContinousTEst");
+
+  delay(10000);
+  
+  signalQuality = modem.getSignalQuality();
+  Serial.print("Signal quality main loop second check: ");
+  Serial.println(signalQuality);
+
+  Serial.println("End of main loop++++++++++++++++++");
+}
+
+void powerOnSIM900() {
+  // SIM900 expects PWR pin to be pulled LOW for ~1 second to power on
+  Serial.println("Toggling SIM900 PWR pin to power on/reset...");
+  pinMode(SIM900_PWR_PIN, OUTPUT);
+  digitalWrite(SIM900_PWR_PIN, LOW);
+  delay(1200); // 1–2 seconds is typical
+  digitalWrite(SIM900_PWR_PIN, HIGH);
+  delay(6000); // Wait for module to boot
+  digitalWrite(SIM900_PWR_PIN, LOW);
+  delay(3000);
+}
+
+void systemstart() {
+  modem.sendSMS(phoneNumber, "System is initiated");
+  delay(2000);
+}
+
+bool checkNetwork() {
+  Serial.println("Checking network connectivity...");
+  if (modem.isNetworkConnected()) {
+    Serial.println("Network is connected.");
+    return true;
+  } else {
+    Serial.println("Network is NOT connected.");
+    return false;
+  }
+}
+
+void clearbuffer() {
+  // Changed from sim900Serial to SIM900_UART
+  while(SIM900_UART.available()) {
+    SIM900_UART.read();
+  }
+}
+
+void clearSerialBuffer() {
+  while(Serial.available() > 0) {
+    Serial.read(); // Read and discard all available bytes
+  }
+}
+
+
+
+
+
+
+BOTH COMBINED CODE
+
+#include <Arduino.h>
+#include <TinyGPS++.h>
+
+#define TINY_GSM_MODEM_SIM900
+#include <TinyGsmClient.h>
+
+/* ================= UART ASSIGNMENT =================
+   Serial   -> USB debug
+   Serial1  -> SIM900  (UNCHANGED)
+   Serial2  -> GPS     (MOVED HERE)
+   =================================================== */
+
+// ---------- GPS ----------
+TinyGPSPlus gps;
+
+// ---------- SIM900 ----------
+#define SIM900_UART Serial1
+#define SIM900_PWR_PIN 3
+
+TinyGsm modem(SIM900_UART);
+
+// Configuration
+String phoneNumber = "+919786019360";
+
+// ---------- Utility functions ----------
+void powerOnSIM900();
+void clearSIM900Buffer();
+void systemstart();
+
+void setup() {
+  // USB debug
+  Serial.begin(9600);
+  delay(2000);
+
+  // SIM900 UART (UNCHANGED)
+  SIM900_UART.begin(9600);
+
+  // GPS UART (MOVED here)
+  Serial2.begin(115200);   // GPS baud you already confirmed works
+
+  Serial.println("System starting...");
+
+  // Power on SIM900
+  powerOnSIM900();
+
+  Serial.println("Initializing SIM900...");
+  delay(8000);
+
+  Serial.print("Modem Info: ");
+  Serial.println(modem.getModemInfo());
+
+  Serial.println("Waiting for network...");
+  if (!modem.waitForNetwork()) {
+    Serial.println("Network failed");
+    return;
+  }
+
+  Serial.println("Network connected");
+
+  systemstart();
+}
+
+void loop() {
+  // -------- Read GPS --------
+  while (Serial2.available()) {
+    gps.encode(Serial2.read());
+  }
+
+  // -------- When GPS updates, send SMS --------
+  if (gps.location.isUpdated()) {
+    float lat = gps.location.lat();
+    float lng = gps.location.lng();
+
+    String msg = "Location:\n";
+    msg += "Lat: " + String(lat, 6) + "\n";
+    msg += "Lng: " + String(lng, 6) + "\n";
+    msg += "https://maps.google.com/?q=";
+    msg += String(lat, 6) + "," + String(lng, 6);
+
+    modem.sendSMS(phoneNumber, msg);
+
+    Serial.println("SMS sent with GPS location");
+
+    delay(60000); // send once per minute
+  }
+}
+
+/* ================= FUNCTIONS ================= */
+
+void powerOnSIM900() {
+  pinMode(SIM900_PWR_PIN, OUTPUT);
+  digitalWrite(SIM900_PWR_PIN, LOW);
+  delay(1200);
+  digitalWrite(SIM900_PWR_PIN, HIGH);
+  delay(6000);
+  digitalWrite(SIM900_PWR_PIN, LOW);
+}
+
+void systemstart() {
+  modem.sendSMS(phoneNumber, "System initiated");
+}
+
+void clearSIM900Buffer() {
+  while (SIM900_UART.available()) {
+    SIM900_UART.read();
+  }
+}
+
